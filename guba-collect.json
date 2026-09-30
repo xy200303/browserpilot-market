@@ -1,0 +1,543 @@
+{
+  "kind": "app",
+  "version": "0.3.0",
+  "app": {
+    "name": "股票吧数据采集",
+    "mode": "workflow",
+    "description": "按起止时间采集东方财富上证指数股吧的帖子和评论，并导出 CSV。"
+  },
+  "workflow": {
+    "environment_variables": [],
+    "conversation_variables": [],
+    "graph": {
+      "nodes": [
+        {
+          "id": "start",
+          "data": {
+            "type": "start",
+            "title": "开始",
+            "variables": [
+              {
+                "label": "开始时间",
+                "required": true,
+                "type": "text-input",
+                "variable": "开始"
+              },
+              {
+                "label": "结束时间",
+                "required": true,
+                "type": "text-input",
+                "variable": "结束"
+              }
+            ]
+          }
+        },
+        {
+          "id": "open",
+          "data": {
+            "type": "goto",
+            "title": "打开股吧",
+            "url": "https://guba.eastmoney.com/list,zssh000001.html"
+          }
+        },
+        {
+          "id": "bounds",
+          "data": {
+            "type": "code",
+            "title": "时间范围",
+            "code": "\nconst parseBound = (text, endOfDay) => {\n  const match = String(text || '').trim().match(/^(\\d{4})-(\\d{2})-(\\d{2})(?:\\s+(\\d{2}):(\\d{2})(?::(\\d{2}))?)?$/)\n  if (!match) throw new Error('时间写成 2026-09-30 11:58 这样')\n  const hasClock = match[4] !== undefined\n  return new Date(\n    Number(match[1]),\n    Number(match[2]) - 1,\n    Number(match[3]),\n    hasClock ? Number(match[4]) : (endOfDay ? 23 : 0),\n    hasClock ? Number(match[5]) : (endOfDay ? 59 : 0),\n    hasClock ? Number(match[6] || 0) : (endOfDay ? 59 : 0)\n  ).getTime()\n}\nconst startText = String(inputs['开始'] || '').trim()\nconst endText = String(inputs['结束'] || '').trim()\nconst startMs = parseBound(startText, false)\nconst endMs = parseBound(endText, true)\nif (!(startMs <= endMs)) throw new Error('开始时间要早于结束时间')\nreturn { startMs, endMs, startText, endText }\n",
+            "outputs": {
+              "endMs": {
+                "type": "number"
+              },
+              "endText": {
+                "type": "string"
+              },
+              "startMs": {
+                "type": "number"
+              },
+              "startText": {
+                "type": "string"
+              }
+            },
+            "variables": [
+              {
+                "value_selector": [
+                  "input",
+                  "开始"
+                ],
+                "variable": "开始"
+              },
+              {
+                "value_selector": [
+                  "input",
+                  "结束"
+                ],
+                "variable": "结束"
+              }
+            ]
+          }
+        },
+        {
+          "id": "pages",
+          "data": {
+            "type": "loop",
+            "title": "翻帖子页",
+            "edges": [
+              {
+                "source": "pageList",
+                "target": "pagePick",
+                "id": "e0-pageList-pagePick",
+                "sourceHandle": "source",
+                "targetHandle": "target"
+              }
+            ],
+            "max": 40,
+            "mode": "until",
+            "nodes": [
+              {
+                "data": {
+                  "body": "param=code%3Dzssh000001%26type%3D0%26p%3D{{#loop.index#}}%26ps%3D80%26sorttype%3D1&plat=Web&path=webarticlelist%2Fapi%2FArticle%2FArticlelist&env=1&origin=&version=2022&product=Guba",
+                  "headers": "Content-Type: application/x-www-form-urlencoded",
+                  "method": "post",
+                  "title": "帖子列表",
+                  "type": "http-request",
+                  "url": "https://guba.eastmoney.com/api/getData?code=zssh000001&path=webarticlelist%2Fapi%2FArticle%2FArticlelist"
+                },
+                "id": "pageList"
+              },
+              {
+                "id": "pagePick",
+                "data": {
+                  "type": "code",
+                  "title": "筛帖子",
+                  "code": "\nconst data = inputs.data || {}\nconst items = Array.isArray(data.re) ? data.re : []\nconst startMs = Number(inputs.startMs)\nconst endMs = Number(inputs.endMs)\nconst parse = (text) => Date.parse(String(text || '').replace(' ', 'T'))\nif (!items.length) return { posts: [], stop: true }\nconst newest = parse(items[0].post_last_time)\nif (newest && newest < startMs) return { posts: [], stop: true }\nconst posts = []\nlet stop = false\nfor (const item of items) {\n  const published = parse(item.post_publish_time)\n  const last = parse(item.post_last_time || item.post_publish_time)\n  if (!last) continue\n  if (last < startMs) { stop = true; continue }\n  if (published > endMs) continue\n  posts.push({\n    id: String(item.post_id),\n    title: String(item.post_title || '').trim(),\n    author: String(item.user_nickname || '').trim(),\n    read: String(item.post_click_count || ''),\n    replyCount: Number(item.post_comment_count || 0),\n    ms: published,\n    href: 'https://guba.eastmoney.com/news,zssh000001,' + item.post_id + '.html',\n    inWindow: published >= startMs && published <= endMs\n  })\n}\nconst oldest = parse(items[items.length - 1].post_last_time)\nif (oldest && oldest < startMs) stop = true\nreturn { posts, stop }\n",
+                  "outputs": {
+                    "posts": {
+                      "type": "array"
+                    },
+                    "stop": {
+                      "type": "boolean"
+                    }
+                  },
+                  "variables": [
+                    {
+                      "value_selector": [
+                        "pageList",
+                        "json"
+                      ],
+                      "variable": "data"
+                    },
+                    {
+                      "value_selector": [
+                        "bounds",
+                        "startMs"
+                      ],
+                      "variable": "startMs"
+                    },
+                    {
+                      "value_selector": [
+                        "bounds",
+                        "endMs"
+                      ],
+                      "variable": "endMs"
+                    }
+                  ]
+                }
+              }
+            ],
+            "until": {
+              "comparison_operator": "is",
+              "value": "true",
+              "variable_selector": [
+                "pagePick",
+                "stop"
+              ]
+            }
+          }
+        },
+        {
+          "id": "flat",
+          "data": {
+            "type": "code",
+            "title": "汇总帖子",
+            "code": "\nconst pages = Array.isArray(inputs.pages) ? inputs.pages : []\nconst posts = []\nfor (const page of pages) {\n  const list = page && Array.isArray(page.posts) ? page.posts : []\n  for (const post of list) posts.push(post)\n}\nreturn { posts, commented: posts.filter((post) => post.replyCount > 0) }\n",
+            "outputs": {
+              "commented": {
+                "type": "array"
+              },
+              "posts": {
+                "type": "array"
+              }
+            },
+            "variables": [
+              {
+                "value_selector": [
+                  "pages",
+                  "output"
+                ],
+                "variable": "pages"
+              }
+            ]
+          },
+          "position": {
+            "x": 946.9718572901347,
+            "y": 3.7223264885329534
+          }
+        },
+        {
+          "id": "replies",
+          "data": {
+            "type": "loop",
+            "title": "逐帖拉评论",
+            "edges": [
+              {
+                "source": "hold",
+                "target": "replyPages",
+                "id": "e0-hold-replyPages",
+                "sourceHandle": "source",
+                "targetHandle": "target"
+              },
+              {
+                "source": "replyPages",
+                "target": "replyJoin",
+                "id": "e1-replyPages-replyJoin",
+                "sourceHandle": "source",
+                "targetHandle": "target"
+              }
+            ],
+            "items_selector": [
+              "flat",
+              "commented"
+            ],
+            "mode": "list",
+            "nodes": [
+              {
+                "data": {
+                  "code": "\nconst item = inputs.item || {}\nreturn { id: String(item.id || ''), title: String(item.title || ''), href: String(item.href || '') }\n",
+                  "outputs": {
+                    "href": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "title": "当前帖子",
+                  "type": "code",
+                  "variables": [
+                    {
+                      "value_selector": [
+                        "loop",
+                        "item"
+                      ],
+                      "variable": "item"
+                    }
+                  ]
+                },
+                "id": "hold"
+              },
+              {
+                "data": {
+                  "edges": [
+                    {
+                      "source": "replyReq",
+                      "target": "replyPick",
+                      "id": "e0-replyReq-replyPick",
+                      "sourceHandle": "source",
+                      "targetHandle": "target"
+                    }
+                  ],
+                  "max": 8,
+                  "mode": "until",
+                  "nodes": [
+                    {
+                      "data": {
+                        "body": "param=postid%3D{{#hold.id#}}%26sort%3D1%26sorttype%3D1%26p%3D{{#loop.index#}}%26ps%3D30%26needHide%3Dtrue&plat=Web&path=reply%2Fapi%2FReply%2FArticleNewReplyList&env=1&origin=&version=2022&product=Guba",
+                        "headers": "Content-Type: application/x-www-form-urlencoded",
+                        "method": "post",
+                        "title": "评论列表",
+                        "type": "http-request",
+                        "url": "https://guba.eastmoney.com/api/getData?code=zssh000001&path=reply%2Fapi%2FReply%2FArticleNewReplyList"
+                      },
+                      "id": "replyReq"
+                    },
+                    {
+                      "data": {
+                        "code": "\nconst data = inputs.data || {}\nconst startMs = Number(inputs.startMs)\nconst endMs = Number(inputs.endMs)\nconst parse = (text) => Date.parse(String(text || '').replace(' ', 'T'))\nconst stamp = (ms) => {\n  const date = new Date(ms)\n  const pad = (value) => String(value).padStart(2, '0')\n  return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) + ' ' + pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds())\n}\nconst list = Array.isArray(data.re) ? data.re : []\nconst flatReplies = []\nfor (const item of list) {\n  flatReplies.push(item)\n  for (const child of item.child_replys || []) flatReplies.push(child)\n}\nconst rows = []\nfor (const item of flatReplies) {\n  const ms = parse(item.reply_time || item.reply_publish_time)\n  if (!ms || ms < startMs || ms > endMs) continue\n  const user = item.reply_user || {}\n  rows.push([\n    '评论',\n    stamp(ms),\n    user.user_nickname || '',\n    inputs.title || '',\n    String(item.reply_text || '').replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim(),\n    '',\n    '',\n    inputs.href || ''\n  ])\n}\nreturn { rows, stop: list.length < 30 || Number(inputs.index) >= 8 }\n",
+                        "outputs": {
+                          "rows": {
+                            "type": "array"
+                          },
+                          "stop": {
+                            "type": "boolean"
+                          }
+                        },
+                        "title": "筛评论",
+                        "type": "code",
+                        "variables": [
+                          {
+                            "value_selector": [
+                              "replyReq",
+                              "json"
+                            ],
+                            "variable": "data"
+                          },
+                          {
+                            "value_selector": [
+                              "hold",
+                              "title"
+                            ],
+                            "variable": "title"
+                          },
+                          {
+                            "value_selector": [
+                              "hold",
+                              "href"
+                            ],
+                            "variable": "href"
+                          },
+                          {
+                            "value_selector": [
+                              "bounds",
+                              "startMs"
+                            ],
+                            "variable": "startMs"
+                          },
+                          {
+                            "value_selector": [
+                              "bounds",
+                              "endMs"
+                            ],
+                            "variable": "endMs"
+                          },
+                          {
+                            "value_selector": [
+                              "loop",
+                              "index"
+                            ],
+                            "variable": "index"
+                          }
+                        ]
+                      },
+                      "id": "replyPick"
+                    }
+                  ],
+                  "title": "翻评论页",
+                  "type": "loop",
+                  "until": {
+                    "comparison_operator": "is",
+                    "value": "true",
+                    "variable_selector": [
+                      "replyPick",
+                      "stop"
+                    ]
+                  }
+                },
+                "id": "replyPages"
+              },
+              {
+                "data": {
+                  "code": "\nconst pages = Array.isArray(inputs.pages) ? inputs.pages : []\nconst rows = []\nfor (const page of pages) {\n  const list = page && Array.isArray(page.rows) ? page.rows : []\n  for (const row of list) rows.push(row)\n}\nreturn { rows }\n",
+                  "outputs": {
+                    "rows": {
+                      "type": "array"
+                    }
+                  },
+                  "title": "汇总评论",
+                  "type": "code",
+                  "variables": [
+                    {
+                      "value_selector": [
+                        "replyPages",
+                        "output"
+                      ],
+                      "variable": "pages"
+                    }
+                  ]
+                },
+                "id": "replyJoin"
+              }
+            ]
+          }
+        },
+        {
+          "id": "table",
+          "data": {
+            "type": "code",
+            "title": "合成表格",
+            "code": "\nconst stamp = (ms) => {\n  const date = new Date(ms)\n  const pad = (value) => String(value).padStart(2, '0')\n  return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) + ' ' + pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds())\n}\nconst posts = Array.isArray(inputs.posts) ? inputs.posts : []\nconst groups = Array.isArray(inputs.groups) ? inputs.groups : []\nconst replyRows = []\nfor (const group of groups) {\n  const list = group && Array.isArray(group.rows) ? group.rows : []\n  for (const row of list) replyRows.push(row)\n}\nconst postRows = posts.filter((post) => post.inWindow).map((post) => [\n  '帖子', stamp(post.ms), post.author, post.title, post.title, post.read, String(post.replyCount), post.href\n])\nconst rows = postRows.concat(replyRows)\nrows.sort((a, b) => (a[1] < b[1] ? 1 : a[1] > b[1] ? -1 : 0))\nconst fileTime = (text) => String(text || '').replace(/[^\\d]/g, '')\nconst sheet = {\n  filename: '上证指数评论_循环_' + fileTime(inputs.startText) + '_' + fileTime(inputs.endText) + '.csv',\n  headers: ['类型', '时间', '作者', '标题', '内容', '阅读', '评论数', '链接'],\n  rows\n}\nreturn { sheet, count: rows.length, posts: postRows.length, comments: replyRows.length }\n",
+            "outputs": {
+              "comments": {
+                "type": "number"
+              },
+              "count": {
+                "type": "number"
+              },
+              "posts": {
+                "type": "number"
+              },
+              "sheet": {
+                "type": "object"
+              }
+            },
+            "variables": [
+              {
+                "value_selector": [
+                  "flat",
+                  "posts"
+                ],
+                "variable": "posts"
+              },
+              {
+                "value_selector": [
+                  "replies",
+                  "output"
+                ],
+                "variable": "groups"
+              },
+              {
+                "value_selector": [
+                  "bounds",
+                  "startText"
+                ],
+                "variable": "startText"
+              },
+              {
+                "value_selector": [
+                  "bounds",
+                  "endText"
+                ],
+                "variable": "endText"
+              }
+            ]
+          }
+        },
+        {
+          "id": "file",
+          "data": {
+            "type": "export",
+            "title": "导出",
+            "data_selector": [
+              "table",
+              "sheet"
+            ]
+          },
+          "position": {
+            "x": 1666.2615886449612,
+            "y": 5.89606702482191
+          }
+        },
+        {
+          "id": "end",
+          "data": {
+            "type": "end",
+            "title": "结束",
+            "outputs": [
+              {
+                "value_selector": [
+                  "table",
+                  "count"
+                ],
+                "variable": "count"
+              },
+              {
+                "value_selector": [
+                  "table",
+                  "posts"
+                ],
+                "variable": "posts"
+              },
+              {
+                "value_selector": [
+                  "table",
+                  "comments"
+                ],
+                "variable": "comments"
+              },
+              {
+                "value_selector": [
+                  "pages",
+                  "index"
+                ],
+                "variable": "pages"
+              },
+              {
+                "value_selector": [
+                  "file",
+                  "path"
+                ],
+                "variable": "path"
+              }
+            ]
+          },
+          "position": {
+            "x": 1909.3104242146508,
+            "y": 10.689575785349227
+          }
+        }
+      ],
+      "edges": [
+        {
+          "source": "start",
+          "target": "open",
+          "id": "e0-start-open",
+          "sourceHandle": "source",
+          "targetHandle": "target"
+        },
+        {
+          "source": "open",
+          "target": "bounds",
+          "id": "e1-open-bounds",
+          "sourceHandle": "source",
+          "targetHandle": "target"
+        },
+        {
+          "source": "bounds",
+          "target": "pages",
+          "id": "e2-bounds-pages",
+          "sourceHandle": "source",
+          "targetHandle": "target"
+        },
+        {
+          "source": "pages",
+          "target": "flat",
+          "id": "e3-pages-flat",
+          "sourceHandle": "source",
+          "targetHandle": "target"
+        },
+        {
+          "source": "flat",
+          "target": "replies",
+          "id": "e4-flat-replies",
+          "sourceHandle": "source",
+          "targetHandle": "target"
+        },
+        {
+          "source": "replies",
+          "target": "table",
+          "id": "e5-replies-table",
+          "sourceHandle": "source",
+          "targetHandle": "target"
+        },
+        {
+          "source": "table",
+          "target": "file",
+          "id": "e6-table-file",
+          "sourceHandle": "source",
+          "targetHandle": "target"
+        },
+        {
+          "source": "file",
+          "target": "end",
+          "id": "e7-file-end",
+          "sourceHandle": "source",
+          "targetHandle": "target"
+        }
+      ]
+    }
+  }
+}

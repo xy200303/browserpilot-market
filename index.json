@@ -13,6 +13,20 @@
       "description": "读取当前标签的标题和地址。",
       "author": "BrowserPilot",
       "file": "page-title.json"
+    },
+    {
+      "slug": "boss-apply",
+      "name": "BOSS直聘自动投简历",
+      "description": "在武汉按关键词搜索职位，点中指定卡片后发送招呼语。",
+      "author": "BrowserPilot",
+      "file": "boss-apply.json"
+    },
+    {
+      "slug": "guba-collect",
+      "name": "股票吧数据采集",
+      "description": "按起止时间采集东方财富上证指数股吧的帖子和评论，并导出 CSV。",
+      "author": "BrowserPilot",
+      "file": "guba-collect.json"
     }
   ]
 }

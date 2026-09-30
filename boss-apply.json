@@ -1,0 +1,231 @@
+{
+  "kind": "app",
+  "version": "0.3.0",
+  "app": {
+    "name": "BOSS直聘自动投简历",
+    "mode": "workflow",
+    "description": "在武汉按关键词搜索职位，点中指定卡片后发送招呼语。"
+  },
+  "workflow": {
+    "environment_variables": [],
+    "conversation_variables": [],
+    "graph": {
+      "nodes": [
+        {
+          "id": "start",
+          "data": {
+            "type": "start",
+            "title": "开始",
+            "variables": [
+              {
+                "label": "搜索词",
+                "required": true,
+                "type": "text-input",
+                "variable": "关键词"
+              },
+              {
+                "label": "职位名称",
+                "required": true,
+                "type": "text-input",
+                "variable": "职位"
+              },
+              {
+                "label": "招呼语",
+                "required": true,
+                "type": "text-input",
+                "variable": "招呼语"
+              }
+            ]
+          }
+        },
+        {
+          "id": "build",
+          "data": {
+            "type": "code",
+            "title": "搜索地址",
+            "code": "const keyword = encodeURIComponent(String(inputs.关键词 || ''));\nreturn { url: 'https://www.zhipin.com/web/geek/job?query=' + keyword + '&city=101200100' };",
+            "outputs": {
+              "url": {
+                "type": "string"
+              }
+            },
+            "variables": [
+              {
+                "value_selector": [
+                  "input",
+                  "关键词"
+                ],
+                "variable": "关键词"
+              }
+            ]
+          }
+        },
+        {
+          "id": "open",
+          "data": {
+            "type": "goto",
+            "title": "打开搜索",
+            "url": "{{#build.url#}}"
+          }
+        },
+        {
+          "id": "find",
+          "data": {
+            "type": "scroll",
+            "title": "滚到职位",
+            "direction": "down",
+            "until": {
+              "xpath": "//li[contains(@class,'job-card-box')][.//a[normalize-space(.)='{{#input.职位#}}']]//ul[contains(@class,'tag-list')]"
+            }
+          }
+        },
+        {
+          "id": "pick",
+          "data": {
+            "type": "click",
+            "title": "选中职位",
+            "locator": {
+              "xpath": "//li[contains(@class,'job-card-box')][.//a[normalize-space(.)='{{#input.职位#}}']]//ul[contains(@class,'tag-list')]"
+            }
+          }
+        },
+        {
+          "id": "talk",
+          "data": {
+            "type": "click",
+            "title": "立即沟通",
+            "locator": {
+              "xpath": "//a[normalize-space(.)='立即沟通']"
+            }
+          }
+        },
+        {
+          "id": "wait",
+          "data": {
+            "type": "script",
+            "title": "等沟通窗口",
+            "source": "const start = Date.now();\nwhile (!document.querySelector('.chat-input') && Date.now() - start < 8000) {\n  if ((document.body.innerText || '').includes('号码隐私保护')) {\n    const ok = Array.from(document.querySelectorAll('button, span, a')).find((node) => (node.innerText || '').trim() === '确定' && node.getBoundingClientRect().width > 0);\n    if (ok) ok.click();\n  }\n  await new Promise((resolve) => setTimeout(resolve, 200));\n}\nif (!document.querySelector('.chat-input')) throw new Error('没有打开沟通窗口');\nreturn { ok: true };"
+          }
+        },
+        {
+          "id": "draft",
+          "data": {
+            "type": "fill",
+            "title": "填写招呼语",
+            "entry": "paste",
+            "locator": {
+              "xpath": "//div[contains(@class,'chat-input')]"
+            },
+            "text": "{{#input.招呼语#}}"
+          }
+        },
+        {
+          "id": "send",
+          "data": {
+            "type": "click",
+            "title": "发送",
+            "locator": {
+              "xpath": "//button[normalize-space(.)='发送']"
+            }
+          }
+        },
+        {
+          "id": "check",
+          "data": {
+            "type": "script",
+            "title": "确认发出",
+            "source": "const start = Date.now();\nwhile (Date.now() - start < 5000) {\n  const draft = ((document.querySelector('.chat-input') || {}).innerText || '').trim();\n  const thread = ((document.querySelector('.chat-conversation') || {}).innerText || '');\n  if (!draft && thread.includes('简历已在 BOSS 上')) return { ok: true };\n  await new Promise((resolve) => setTimeout(resolve, 250));\n}\nthrow new Error('消息没有发出去');"
+          }
+        },
+        {
+          "id": "end",
+          "data": {
+            "type": "end",
+            "title": "结束",
+            "outputs": [
+              {
+                "value_selector": [
+                  "input",
+                  "职位"
+                ],
+                "variable": "职位"
+              }
+            ]
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "start",
+          "target": "build",
+          "sourceHandle": "source",
+          "targetHandle": "target"
+        },
+        {
+          "id": "e2",
+          "source": "build",
+          "target": "open",
+          "sourceHandle": "source",
+          "targetHandle": "target"
+        },
+        {
+          "id": "e3",
+          "source": "open",
+          "target": "find",
+          "sourceHandle": "source",
+          "targetHandle": "target"
+        },
+        {
+          "id": "e4",
+          "source": "find",
+          "target": "pick",
+          "sourceHandle": "source",
+          "targetHandle": "target"
+        },
+        {
+          "id": "e5",
+          "source": "pick",
+          "target": "talk",
+          "sourceHandle": "source",
+          "targetHandle": "target"
+        },
+        {
+          "id": "e6",
+          "source": "talk",
+          "target": "wait",
+          "sourceHandle": "source",
+          "targetHandle": "target"
+        },
+        {
+          "id": "e7",
+          "source": "wait",
+          "target": "draft",
+          "sourceHandle": "source",
+          "targetHandle": "target"
+        },
+        {
+          "id": "e8",
+          "source": "draft",
+          "target": "send",
+          "sourceHandle": "source",
+          "targetHandle": "target"
+        },
+        {
+          "id": "e9",
+          "source": "send",
+          "target": "check",
+          "sourceHandle": "source",
+          "targetHandle": "target"
+        },
+        {
+          "id": "e10",
+          "source": "check",
+          "target": "end",
+          "sourceHandle": "source",
+          "targetHandle": "target"
+        }
+      ]
+    }
+  }
+}
