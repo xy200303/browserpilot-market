@@ -22,7 +22,8 @@
       "description": "在武汉按关键词搜索职位，点中指定卡片后发送招呼语。",
       "author": "BrowserPilot",
       "file": "boss-apply.json",
-      "category": "办公协同"
+      "category": "办公协同",
+      "site": "https://www.zhipin.com"
     },
     {
       "slug": "guba-collect",
@@ -30,7 +31,8 @@
       "description": "按起止时间采集东方财富上证指数股吧的帖子和评论，并导出 CSV。",
       "author": "BrowserPilot",
       "file": "guba-collect.json",
-      "category": "数据分析"
+      "category": "数据分析",
+      "site": "https://guba.eastmoney.com"
     }
   ]
 }
