@@ -4,7 +4,7 @@
   "app": {
     "name": "BOSS直聘自动投简历",
     "mode": "workflow",
-    "description": "在武汉按关键词搜索职位，点第一个职位打沟通，自动过验证码，粘贴招呼语发出去。"
+    "description": "按关键词搜索职位（武汉），筛出满足最低薪资的全部职位，循环逐个打开、打沟通、发招呼语。自动过验证码。"
   },
   "workflow": {
     "environment_variables": [],
@@ -24,16 +24,16 @@
                 "variable": "关键词"
               },
               {
-                "label": "职位名称",
-                "required": true,
-                "type": "text-input",
-                "variable": "职位"
-              },
-              {
                 "label": "招呼语",
                 "required": true,
                 "type": "text-input",
                 "variable": "招呼语"
+              },
+              {
+                "variable": "最低薪资",
+                "label": "最低薪资（K，比如 10 表示 10K 起）",
+                "type": "number",
+                "required": false
               }
             ]
           }
@@ -78,84 +78,143 @@
           }
         },
         {
-          "id": "find",
-          "data": {
-            "type": "scroll",
-            "title": "滚到职位",
-            "direction": "down",
-            "until": {
-              "xpath": "//li[contains(@class,'job-card-box')][.//a[normalize-space(.)='{{#input.职位#}}']]//ul[contains(@class,'tag-list')]"
-            }
-          }
-        },
-        {
-          "id": "pick",
-          "data": {
-            "type": "click",
-            "title": "选中职位",
-            "locator": {
-              "xpath": "//li[contains(@class,'job-card-box')][.//a[normalize-space(.)='{{#input.职位#}}']]//ul[contains(@class,'tag-list')]"
-            }
-          }
-        },
-        {
-          "id": "talk",
-          "data": {
-            "type": "click",
-            "title": "立即沟通",
-            "locator": {
-              "xpath": "//a[normalize-space(.)='立即沟通']"
-            }
-          }
-        },
-        {
-          "id": "dismiss",
+          "id": "collect",
           "data": {
             "type": "script",
-            "title": "关掉确认弹窗",
-            "source": "const ok = Array.from(document.querySelectorAll('button, span, a')).find((node) => (node.innerText || '').trim() === '确定' && node.getBoundingClientRect().width > 0);\nif (ok) ok.click();\nreturn { ok: true };"
+            "title": "收集满足薪资的职位",
+            "source": "const min = Number(inputs['最低薪资'] || 0)\nfor (let round = 0; round < 4; round += 1) {\n  window.scrollTo(0, document.body.scrollHeight)\n  await new Promise((resolve) => setTimeout(resolve, 1200))\n}\nconst jobs = []\nfor (const card of Array.from(document.querySelectorAll('li.job-card-box'))) {\n  const salaryText = ((card.querySelector('.salary') || {}).textContent || '').trim()\n  const m = salaryText.match(/(\\d+)-(\\d+)/)\n  const low = m ? Number(m[1]) : 0\n  if (min && low < min) continue\n  const link = card.querySelector('a')\n  if (!link || !link.href) continue\n  jobs.push({ title: ((card.querySelector('.job-name') || link).textContent || '').trim(), salary: salaryText, href: link.href })\n}\nif (!jobs.length) throw new Error('没有满足条件的职位，共扫到 ' + document.querySelectorAll('li.job-card-box').length + ' 张卡片')\nreturn { jobs, total: jobs.length }",
+            "variables": [
+              {
+                "variable": "最低薪资",
+                "label": "最低薪资",
+                "value_selector": [
+                  "input",
+                  "最低薪资"
+                ]
+              }
+            ]
           }
         },
         {
-          "id": "waitchat",
+          "id": "applyLoop",
           "data": {
-            "type": "wait",
-            "title": "等沟通窗口打开",
-            "state": "appear",
-            "timeout": "15",
-            "locator": {
-              "selector": ".chat-input"
-            }
-          }
-        },
-        {
-          "id": "draft",
-          "data": {
-            "type": "fill",
-            "title": "填写招呼语",
-            "entry": "paste",
-            "locator": {
-              "xpath": "//div[contains(@class,'chat-input')]"
-            },
-            "text": "{{#input.招呼语#}}"
-          }
-        },
-        {
-          "id": "send",
-          "data": {
-            "type": "click",
-            "title": "发送",
-            "locator": {
-              "xpath": "//button[normalize-space(.)='发送']"
-            }
-          }
-        },
-        {
-          "id": "check",
-          "data": {
-            "type": "script",
-            "title": "确认发出",
-            "source": "const start = Date.now();\nwhile (Date.now() - start < 10000) {\n  const draft = ((document.querySelector('.chat-input') || {}).innerText || '').trim();\n  const thread = ((document.querySelector('.chat-conversation') || {}).innerText || '');\n  if (!draft && thread.includes('简历已在 BOSS 上')) return { ok: true };\n  await new Promise((resolve) => setTimeout(resolve, 250));\n}\nthrow new Error('消息没有发出去');"
+            "type": "loop",
+            "title": "逐个投递",
+            "mode": "list",
+            "items_selector": [
+              "collect",
+              "jobs"
+            ],
+            "nodes": [
+              {
+                "id": "openJob",
+                "data": {
+                  "type": "goto",
+                  "title": "打开职位",
+                  "url": "{{#loop.item.href#}}"
+                }
+              },
+              {
+                "id": "captchaJob",
+                "data": {
+                  "type": "captcha",
+                  "title": "过验证码",
+                  "engine": "auto",
+                  "retries": "2"
+                }
+              },
+              {
+                "id": "talk",
+                "data": {
+                  "type": "script",
+                  "title": "点立即沟通",
+                  "source": "const start = Date.now()\nwhile (Date.now() - start < 10000) {\n  if (document.querySelector('.chat-input')) return { mode: 'chat' }\n  const btn = Array.from(document.querySelectorAll('a.btn-startchat')).find((a) => a.getBoundingClientRect().height > 0)\n  if (btn) { btn.click(); return { mode: 'clicked' } }\n  await new Promise((r) => setTimeout(r, 300))\n}\nthrow new Error('既没有沟通按钮也没有聊天窗口')"
+                }
+              },
+              {
+                "id": "dismiss",
+                "data": {
+                  "type": "script",
+                  "title": "关掉确认弹窗",
+                  "source": "const ok = Array.from(document.querySelectorAll('button, span, a')).find((node) => (node.innerText || '').trim() === '确定' && node.getBoundingClientRect().width > 0);\nif (ok) ok.click();\nreturn { ok: true };"
+                }
+              },
+              {
+                "id": "waitchat",
+                "data": {
+                  "type": "wait",
+                  "title": "等沟通窗口打开",
+                  "state": "appear",
+                  "timeout": "15",
+                  "locator": {
+                    "selector": ".chat-input"
+                  }
+                }
+              },
+              {
+                "id": "draft",
+                "data": {
+                  "type": "fill",
+                  "title": "填写招呼语",
+                  "entry": "paste",
+                  "locator": {
+                    "xpath": "//div[contains(@class,'chat-input')]"
+                  },
+                  "text": "{{#input.招呼语#}}"
+                }
+              },
+              {
+                "id": "send",
+                "data": {
+                  "type": "script",
+                  "title": "发送并确认",
+                  "variables": [
+                    {
+                      "variable": "招呼语",
+                      "label": "招呼语",
+                      "value_selector": [
+                        "input",
+                        "招呼语"
+                      ]
+                    }
+                  ],
+                  "source": "const start = Date.now()\nconst want = String(inputs['招呼语'] || '').trim().slice(0, 16)\nwhile (Date.now() - start < 10000) {\n  const draft = ((document.querySelector('.chat-input') || {}).innerText || '').trim()\n  if (!draft && want && (document.body.innerText || '').includes(want)) return { ok: true }\n  const btn = Array.from(document.querySelectorAll('button')).find((b) => (b.innerText || '').trim() === '发送' && b.getBoundingClientRect().width > 0)\n  if (btn && draft) btn.click()\n  await new Promise((r) => setTimeout(r, 300))\n}\nthrow new Error('消息没有发出去')"
+                }
+              }
+            ],
+            "edges": [
+              {
+                "id": "openJob-captchaJob",
+                "source": "openJob",
+                "target": "captchaJob"
+              },
+              {
+                "id": "captchaJob-talk",
+                "source": "captchaJob",
+                "target": "talk"
+              },
+              {
+                "id": "talk-dismiss",
+                "source": "talk",
+                "target": "dismiss"
+              },
+              {
+                "id": "dismiss-waitchat",
+                "source": "dismiss",
+                "target": "waitchat"
+              },
+              {
+                "id": "waitchat-draft",
+                "source": "waitchat",
+                "target": "draft"
+              },
+              {
+                "id": "draft-send",
+                "source": "draft",
+                "target": "send"
+              }
+            ],
+            "continueOnError": "true"
           }
         },
         {
@@ -165,11 +224,18 @@
             "title": "结束",
             "outputs": [
               {
+                "variable": "关键词",
                 "value_selector": [
                   "input",
-                  "职位"
-                ],
-                "variable": "职位"
+                  "关键词"
+                ]
+              },
+              {
+                "variable": "投递明细",
+                "value_selector": [
+                  "applyLoop",
+                  "output"
+                ]
               }
             ]
           }
@@ -192,48 +258,18 @@
           "target": "captcha"
         },
         {
-          "id": "captcha-find",
+          "id": "captcha-collect",
           "source": "captcha",
-          "target": "find"
+          "target": "collect"
         },
         {
-          "id": "find-pick",
-          "source": "find",
-          "target": "pick"
+          "id": "collect-applyLoop",
+          "source": "collect",
+          "target": "applyLoop"
         },
         {
-          "id": "pick-talk",
-          "source": "pick",
-          "target": "talk"
-        },
-        {
-          "id": "talk-dismiss",
-          "source": "talk",
-          "target": "dismiss"
-        },
-        {
-          "id": "dismiss-waitchat",
-          "source": "dismiss",
-          "target": "waitchat"
-        },
-        {
-          "id": "waitchat-draft",
-          "source": "waitchat",
-          "target": "draft"
-        },
-        {
-          "id": "draft-send",
-          "source": "draft",
-          "target": "send"
-        },
-        {
-          "id": "send-check",
-          "source": "send",
-          "target": "check"
-        },
-        {
-          "id": "check-end",
-          "source": "check",
+          "id": "applyLoop-end",
+          "source": "applyLoop",
           "target": "end"
         }
       ]
