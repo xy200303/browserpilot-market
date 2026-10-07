@@ -41,6 +41,14 @@
       "author": "BrowserPilot",
       "category": "验证码",
       "file": "geetest-slide.json"
+    },
+    {
+      "slug": "bilibili-video",
+      "name": "BV号下载B站视频",
+      "description": "给一个 BV 号，把视频存成本机 mp4。",
+      "author": "BrowserPilot",
+      "category": "下载",
+      "file": "bilibili-video.json"
     }
   ]
 }

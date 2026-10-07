@@ -1,0 +1,71 @@
+{
+  "kind": "app",
+  "version": "0.3.0",
+  "app": {
+    "name": "BV号下载B站视频",
+    "mode": "workflow",
+    "description": "给一个 BV 号，打开视频页把视频存成本机 mp4（自动抓 DASH 双轨合并，H.264 优先）。",
+    "icon": ""
+  },
+  "workflow": {
+    "environment_variables": [],
+    "conversation_variables": [],
+    "graph": {
+      "nodes": [
+        {
+          "id": "start",
+          "data": {
+            "type": "start",
+            "title": "开始",
+            "variables": [
+              { "variable": "BV号", "label": "BV号（比如 BV1GJ411x7h7）", "type": "string", "required": true }
+            ]
+          }
+        },
+        {
+          "id": "build",
+          "data": {
+            "type": "code",
+            "title": "拼视频地址",
+            "code": "const bv = String(inputs['BV号'] || '').trim()\nif (!/^BV/i.test(bv)) throw new Error('BV号要以 BV 开头')\nreturn { url: 'https://www.bilibili.com/video/' + bv + '/' }"
+          }
+        },
+        {
+          "id": "open",
+          "data": { "type": "goto", "title": "打开视频页", "url": "{{#build.url#}}" }
+        },
+        {
+          "id": "captcha",
+          "data": { "type": "captcha", "title": "过验证码", "engine": "auto", "retries": "2" }
+        },
+        {
+          "id": "waitvideo",
+          "data": { "type": "wait", "title": "等播放器", "state": "appear", "timeout": "20", "locator": { "selector": "video" } }
+        },
+        {
+          "id": "save",
+          "data": { "type": "download", "title": "存视频", "locator": { "selector": "video" }, "savePath": "" }
+        },
+        {
+          "id": "end",
+          "data": {
+            "type": "end",
+            "title": "结束",
+            "outputs": [
+              { "variable": "文件", "value_selector": ["save", "path"] },
+              { "variable": "大小", "value_selector": ["save", "bytes"] }
+            ]
+          }
+        }
+      ],
+      "edges": [
+        { "id": "start-build", "source": "start", "target": "build" },
+        { "id": "build-open", "source": "build", "target": "open" },
+        { "id": "open-captcha", "source": "open", "target": "captcha" },
+        { "id": "captcha-waitvideo", "source": "captcha", "target": "waitvideo" },
+        { "id": "waitvideo-save", "source": "waitvideo", "target": "save" },
+        { "id": "save-end", "source": "save", "target": "end" }
+      ]
+    }
+  }
+}
