@@ -4,7 +4,7 @@
   "app": {
     "name": "BOSS直聘自动投简历",
     "mode": "workflow",
-    "description": "在武汉按关键词搜索职位，点中指定卡片后发送招呼语。"
+    "description": "在武汉按关键词搜索职位，点第一个职位打沟通，自动过验证码，粘贴招呼语发出去。"
   },
   "workflow": {
     "environment_variables": [],
@@ -69,6 +69,15 @@
           }
         },
         {
+          "id": "captcha",
+          "data": {
+            "type": "captcha",
+            "title": "过验证码",
+            "engine": "auto",
+            "retries": "2"
+          }
+        },
+        {
           "id": "find",
           "data": {
             "type": "scroll",
@@ -100,11 +109,23 @@
           }
         },
         {
-          "id": "wait",
+          "id": "dismiss",
           "data": {
             "type": "script",
-            "title": "等沟通窗口",
-            "source": "const start = Date.now();\nwhile (!document.querySelector('.chat-input') && Date.now() - start < 8000) {\n  if ((document.body.innerText || '').includes('号码隐私保护')) {\n    const ok = Array.from(document.querySelectorAll('button, span, a')).find((node) => (node.innerText || '').trim() === '确定' && node.getBoundingClientRect().width > 0);\n    if (ok) ok.click();\n  }\n  await new Promise((resolve) => setTimeout(resolve, 200));\n}\nif (!document.querySelector('.chat-input')) throw new Error('没有打开沟通窗口');\nreturn { ok: true };"
+            "title": "关掉确认弹窗",
+            "source": "const ok = Array.from(document.querySelectorAll('button, span, a')).find((node) => (node.innerText || '').trim() === '确定' && node.getBoundingClientRect().width > 0);\nif (ok) ok.click();\nreturn { ok: true };"
+          }
+        },
+        {
+          "id": "waitchat",
+          "data": {
+            "type": "wait",
+            "title": "等沟通窗口打开",
+            "state": "appear",
+            "timeout": "15",
+            "locator": {
+              "selector": ".chat-input"
+            }
           }
         },
         {
@@ -134,7 +155,7 @@
           "data": {
             "type": "script",
             "title": "确认发出",
-            "source": "const start = Date.now();\nwhile (Date.now() - start < 5000) {\n  const draft = ((document.querySelector('.chat-input') || {}).innerText || '').trim();\n  const thread = ((document.querySelector('.chat-conversation') || {}).innerText || '');\n  if (!draft && thread.includes('简历已在 BOSS 上')) return { ok: true };\n  await new Promise((resolve) => setTimeout(resolve, 250));\n}\nthrow new Error('消息没有发出去');"
+            "source": "const start = Date.now();\nwhile (Date.now() - start < 10000) {\n  const draft = ((document.querySelector('.chat-input') || {}).innerText || '').trim();\n  const thread = ((document.querySelector('.chat-conversation') || {}).innerText || '');\n  if (!draft && thread.includes('简历已在 BOSS 上')) return { ok: true };\n  await new Promise((resolve) => setTimeout(resolve, 250));\n}\nthrow new Error('消息没有发出去');"
           }
         },
         {
@@ -156,74 +177,64 @@
       ],
       "edges": [
         {
-          "id": "e1",
+          "id": "start-build",
           "source": "start",
-          "target": "build",
-          "sourceHandle": "source",
-          "targetHandle": "target"
+          "target": "build"
         },
         {
-          "id": "e2",
+          "id": "build-open",
           "source": "build",
-          "target": "open",
-          "sourceHandle": "source",
-          "targetHandle": "target"
+          "target": "open"
         },
         {
-          "id": "e3",
+          "id": "open-captcha",
           "source": "open",
-          "target": "find",
-          "sourceHandle": "source",
-          "targetHandle": "target"
+          "target": "captcha"
         },
         {
-          "id": "e4",
+          "id": "captcha-find",
+          "source": "captcha",
+          "target": "find"
+        },
+        {
+          "id": "find-pick",
           "source": "find",
-          "target": "pick",
-          "sourceHandle": "source",
-          "targetHandle": "target"
+          "target": "pick"
         },
         {
-          "id": "e5",
+          "id": "pick-talk",
           "source": "pick",
-          "target": "talk",
-          "sourceHandle": "source",
-          "targetHandle": "target"
+          "target": "talk"
         },
         {
-          "id": "e6",
+          "id": "talk-dismiss",
           "source": "talk",
-          "target": "wait",
-          "sourceHandle": "source",
-          "targetHandle": "target"
+          "target": "dismiss"
         },
         {
-          "id": "e7",
-          "source": "wait",
-          "target": "draft",
-          "sourceHandle": "source",
-          "targetHandle": "target"
+          "id": "dismiss-waitchat",
+          "source": "dismiss",
+          "target": "waitchat"
         },
         {
-          "id": "e8",
+          "id": "waitchat-draft",
+          "source": "waitchat",
+          "target": "draft"
+        },
+        {
+          "id": "draft-send",
           "source": "draft",
-          "target": "send",
-          "sourceHandle": "source",
-          "targetHandle": "target"
+          "target": "send"
         },
         {
-          "id": "e9",
+          "id": "send-check",
           "source": "send",
-          "target": "check",
-          "sourceHandle": "source",
-          "targetHandle": "target"
+          "target": "check"
         },
         {
-          "id": "e10",
+          "id": "check-end",
           "source": "check",
-          "target": "end",
-          "sourceHandle": "source",
-          "targetHandle": "target"
+          "target": "end"
         }
       ]
     }

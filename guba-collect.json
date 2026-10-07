@@ -41,6 +41,27 @@
           }
         },
         {
+          "id": "waitlist",
+          "data": {
+            "type": "wait",
+            "title": "等帖子列表出来",
+            "state": "appear",
+            "timeout": "15",
+            "locator": {
+              "selector": ".listitem"
+            }
+          }
+        },
+        {
+          "id": "captcha",
+          "data": {
+            "type": "captcha",
+            "title": "过验证码",
+            "engine": "auto",
+            "retries": "2"
+          }
+        },
+        {
           "id": "bounds",
           "data": {
             "type": "code",
@@ -482,60 +503,54 @@
       ],
       "edges": [
         {
+          "id": "start-open",
           "source": "start",
-          "target": "open",
-          "id": "e0-start-open",
-          "sourceHandle": "source",
-          "targetHandle": "target"
+          "target": "open"
         },
         {
+          "id": "open-waitlist",
           "source": "open",
-          "target": "bounds",
-          "id": "e1-open-bounds",
-          "sourceHandle": "source",
-          "targetHandle": "target"
+          "target": "waitlist"
         },
         {
+          "id": "waitlist-captcha",
+          "source": "waitlist",
+          "target": "captcha"
+        },
+        {
+          "id": "captcha-bounds",
+          "source": "captcha",
+          "target": "bounds"
+        },
+        {
+          "id": "bounds-pages",
           "source": "bounds",
-          "target": "pages",
-          "id": "e2-bounds-pages",
-          "sourceHandle": "source",
-          "targetHandle": "target"
+          "target": "pages"
         },
         {
+          "id": "pages-flat",
           "source": "pages",
-          "target": "flat",
-          "id": "e3-pages-flat",
-          "sourceHandle": "source",
-          "targetHandle": "target"
+          "target": "flat"
         },
         {
+          "id": "flat-replies",
           "source": "flat",
-          "target": "replies",
-          "id": "e4-flat-replies",
-          "sourceHandle": "source",
-          "targetHandle": "target"
+          "target": "replies"
         },
         {
+          "id": "replies-table",
           "source": "replies",
-          "target": "table",
-          "id": "e5-replies-table",
-          "sourceHandle": "source",
-          "targetHandle": "target"
+          "target": "table"
         },
         {
+          "id": "table-file",
           "source": "table",
-          "target": "file",
-          "id": "e6-table-file",
-          "sourceHandle": "source",
-          "targetHandle": "target"
+          "target": "file"
         },
         {
+          "id": "file-end",
           "source": "file",
-          "target": "end",
-          "id": "e7-file-end",
-          "sourceHandle": "source",
-          "targetHandle": "target"
+          "target": "end"
         }
       ]
     }
